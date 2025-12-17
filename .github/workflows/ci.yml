@@ -3,16 +3,19 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main", "master"]
+    branches: ["main"]
     tags: ["v*"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
 
 permissions: {}
 
 jobs:
   build-with-xk6:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
@@ -27,7 +30,11 @@ jobs:
         uses: grafana/setup-xk6@97b842b765bd3fea56db7195e98c5f61cab8fe46 # v1.1.1
         with:
           xk6-version: "1.3.1"
+
       - name: Build
         run: make build
+        shell: bash
+      
       - name: Test
-        run: make test
+        run: make container-test
+        shell: bash
