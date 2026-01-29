@@ -55,6 +55,26 @@ export default function () {
 }
 ```
 
+## Building with xk6
+
+To build a k6 binary with this DB2 driver extension:
+
+```bash
+# First, set up the IBM DB2 client libraries
+curl -L https://raw.githubusercontent.com/ibmdb/go_ibm_db/refs/heads/master/installer/setup.go -o setup.go
+go run setup.go
+rm -f setup.go
+
+# Then build k6 with the extension
+xk6 build --with github.com/grafana/xk6-sql@latest --with github.com/whiteturtle/xk6-sql-driver-db2@latest
+```
+
+Or if building from the local repository:
+
+```bash
+make build
+```
+
 ## Usage
 
 Check the [xk6-sql documentation](https://github.com/grafana/xk6-sql) on how to use this database driver.

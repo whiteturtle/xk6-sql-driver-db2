@@ -1,4 +1,4 @@
-module github.com/iambaim/xk6-sql-driver-db2
+module github.com/whiteturtle/xk6-sql-driver-db2
 
 go 1.24.0
 
