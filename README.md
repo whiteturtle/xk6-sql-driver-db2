@@ -55,26 +55,138 @@ export default function () {
 }
 ```
 
-## Building with xk6
+## Build Instructions
 
-To build a k6 binary with this DB2 driver extension:
+### Prerequisites
+
+- Go 1.24 or higher
+- [xk6](https://github.com/grafana/xk6) installed (`go install go.k6.io/xk6/cmd/xk6@latest`)
+- IBM DB2 CLI driver (will be installed automatically)
+
+### Building with Make (Recommended)
 
 ```bash
-# First, set up the IBM DB2 client libraries
-curl -L https://raw.githubusercontent.com/ibmdb/go_ibm_db/refs/heads/master/installer/setup.go -o setup.go
-go run setup.go
-rm -f setup.go
+# Install IBM DB2 CLI driver
+make setup-db2
 
-# Then build k6 with the extension
-xk6 build --with github.com/grafana/xk6-sql@latest --with github.com/whiteturtle/xk6-sql-driver-db2@latest
+# Build k6 with DB2 extension
+make k6
 ```
 
-Or if building from the local repository:
+This will:
+1. Download and install the IBM DB2 CLI driver to `../../clidriver`
+2. Build k6 with the DB2 extension at `./k6`
+
+### Building with xk6 directly
 
 ```bash
-make build
+# Install IBM DB2 CLI driver
+make setup-db2
+
+# Set required environment variables
+export IBM_DB_HOME=${PWD}/../../clidriver
+export CGO_CFLAGS=-I${PWD}/../../clidriver/include
+export CGO_LDFLAGS=-L${PWD}/../../clidriver/lib
+export DYLD_LIBRARY_PATH=${PWD}/../../clidriver/lib  # macOS
+# OR for Linux:
+# export LD_LIBRARY_PATH=${PWD}/../../clidriver/lib
+
+export CGO_ENABLED=1
+
+# Build k6
+xk6 build \
+  --with github.com/grafana/xk6-sql@latest \
+  --with github.com/oleiade/xk6-encoding@latest \
+  --with github.com/whiteturtle/xk6-sql-driver-db2=.
 ```
 
 ## Usage
 
+### Running k6
+
+Due to the DB2 CLI driver dependency, you need to set the library path when running k6:
+
+```bash
+# macOS
+export DYLD_LIBRARY_PATH=${PWD}/../../clidriver/lib
+./k6 run examples/example.js
+
+# OR use the wrapper script
+./run-k6.sh run examples/example.js
+```
+
+For Linux, use `LD_LIBRARY_PATH` instead of `DYLD_LIBRARY_PATH`.
+
 Check the [xk6-sql documentation](https://github.com/grafana/xk6-sql) on how to use this database driver.
+
+## Docker Usage
+
+### Building the Docker image
+
+```bash
+docker build -t xk6-sql-db2:latest .
+```
+
+### Running with Docker
+
+```bash
+# Run a k6 script
+docker run --rm -v $(pwd)/examples:/scripts xk6-sql-db2:latest run /scripts/example.js
+
+# Check version
+docker run --rm xk6-sql-db2:latest version
+
+# Run with environment variables for DB connection
+docker run --rm \
+  -e DB_HOST=your-db-host \
+  -e DB_PORT=50000 \
+  -e DB_NAME=sample \
+  -e DB_USER=db2inst1 \
+  -e DB_PASSWORD=password \
+  -v $(pwd)/examples:/scripts \
+  xk6-sql-db2:latest run /scripts/example.js
+```
+
+### Kubernetes Usage
+
+Example Kubernetes Job:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load-test
+spec:
+  template:
+    spec:
+      containers:
+      - name: k6
+        image: xk6-sql-db2:latest
+        command: ["k6", "run", "/scripts/example.js"]
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+        env:
+        - name: DB_HOST
+          value: "your-db2-service"
+        - name: DB_PORT
+          value: "50000"
+        - name: DB_NAME
+          value: "sample"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: db2-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db2-credentials
+              key: password
+      volumes:
+      - name: scripts
+        configMap:
+          name: k6-scripts
+      restartPolicy: Never
+  backoffLimit: 0
+```

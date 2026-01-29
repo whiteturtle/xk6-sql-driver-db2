@@ -1,0 +1,29 @@
+# Git files
+.git/
+.gitignore
+.github/
+
+# Build artifacts
+k6
+buildenv_*
+*.dylib
+
+# Documentation
+README.md
+*.md
+
+# CI/CD
+.claude/
+
+# Test data
+testdata/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Scripts
+run-k6.sh

@@ -1,0 +1,130 @@
+---
+# ConfigMap with k6 test script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-scripts
+data:
+  example.js: |
+    import sql from "k6/x/sql";
+    import driver from "k6/x/sql/driver/go_ibm_db";
+    import { TextDecoder } from "k6/x/encoding";
+
+    const con = `HOSTNAME=${__ENV.DB_HOST};DATABASE=${__ENV.DB_NAME};PORT=${__ENV.DB_PORT};UID=${__ENV.DB_USER};PWD=${__ENV.DB_PASSWORD}`;
+    const db = sql.open(driver, con);
+
+    export function setup() {
+      let exist = db.query(
+        "SELECT 1 FROM SYSCAT.TABLES WHERE TABSCHEMA='DB2INST1' AND TABNAME='SAMPLE';"
+      );
+
+      if (exist.length != 0) {
+        db.exec("drop table SAMPLE;");
+      }
+      db.exec(`
+         CREATE TABLE SAMPLE (
+                id VARCHAR(10) NOT NULL DEFAULT '',
+                f_name VARCHAR(40),
+                l_name VARCHAR(40)
+          );
+      `);
+    }
+
+    export function teardown() {
+      db.close();
+    }
+
+    export default function () {
+      const streamDecoder = new TextDecoder();
+      let result = db.exec(`
+        INSERT INTO SAMPLE
+          (id, f_name, l_name)
+        VALUES
+          ('1', 'Peter', 'Pan'),
+          ('2', 'Wendy', 'Darling'),
+          ('3', 'Tinker', 'Bell'),
+          ('4', 'James', 'Hook');
+      `);
+      console.log(`${result.rowsAffected()} rows inserted`);
+
+      let rows = db.query("SELECT * FROM SAMPLE WHERE f_name = 'Peter';");
+      for (const row of rows) {
+        console.log(streamDecoder.decode(new Uint8Array(row.L_NAME)));
+      }
+    }
+
+---
+# Secret with DB2 credentials (base64 encoded)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db2-credentials
+type: Opaque
+data:
+  # username: db2inst1 (base64 encoded)
+  username: ZGIyaW5zdDE=
+  # password: password123 (base64 encoded - CHANGE THIS!)
+  password: cGFzc3dvcmQxMjM=
+
+---
+# Kubernetes Job to run k6 load test
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-db2-load-test
+  labels:
+    app: k6-load-test
+spec:
+  # Number of times to retry if job fails
+  backoffLimit: 0
+  # Clean up completed jobs after 1 hour
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: k6-load-test
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: k6
+        image: xk6-sql-db2:latest
+        imagePullPolicy: IfNotPresent
+        command: ["k6"]
+        args:
+          - "run"
+          - "--vus"
+          - "10"
+          - "--duration"
+          - "30s"
+          - "/scripts/example.js"
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+        env:
+        - name: DB_HOST
+          value: "db2-service.default.svc.cluster.local"
+        - name: DB_PORT
+          value: "50000"
+        - name: DB_NAME
+          value: "SAMPLE"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: db2-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db2-credentials
+              key: password
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+      volumes:
+      - name: scripts
+        configMap:
+          name: k6-scripts

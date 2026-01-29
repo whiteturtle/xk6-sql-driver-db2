@@ -36,7 +36,7 @@ endef
 all: test build example
 
 xk6${ext}:
-	xk6${ext} -V
+	@which xk6${ext} > /dev/null || (echo "Error: xk6 not found. Install it with: go install go.k6.io/xk6/cmd/xk6@latest" && exit 1)
 
 test: setup-db2 *.go testdata/*.js
 	go test -count 1 ./...
@@ -56,7 +56,7 @@ setup-db2:
 	rm -f setup.go
 
 k6: xk6${ext} setup-db2 *.go go.mod go.sum
-	xk6${ext} build -v --with github.com/grafana/xk6-sql@latest --with github.com/oleiade/xk6-encoding@latest --with github.com/whiteturtle/xk6-sql-driver-db2=.
+	xk6${ext} build --with github.com/grafana/xk6-sql@latest --with github.com/oleiade/xk6-encoding@latest --with github.com/whiteturtle/xk6-sql-driver-db2=.
 
 example: k6 setup-container
 	./k6${ext} run examples/example.js
